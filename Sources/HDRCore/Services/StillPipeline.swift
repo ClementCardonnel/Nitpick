@@ -1,16 +1,26 @@
 import Foundation
 import ImageIO
 import CoreGraphics
+import CoreImage
 import UniformTypeIdentifiers
 
-/// ImageIO-based still pipeline: decode (keeping extended range) and encode.
+/// Still pipeline: decode (keeping extended range / applying gain maps) and encode.
 enum StillPipeline {
+    private static let srgb = CGColorSpace(name: CGColorSpace.sRGB)!
+    private static let ciContext = CIContext(options: [.workingColorSpace: CGColorSpace(name: CGColorSpace.sRGB)!])
+
     /// Loads the HDR rendition of the image when the format has one
-    /// (gain-map JPEG, 10-bit HEIC, ProPhoto), otherwise the plain image.
+    /// (gain-map JPEG/HEIC, float TIFF, ProPhoto), otherwise the plain image.
+    ///
+    /// Primary path: Core Image with `.expandToHDR`, which applies embedded gain
+    /// maps and expands to an extended-range color space. Fallback: raw ImageIO
+    /// decode with the HDR decode request (keeps float formats as-is).
     static func loadHDRCGImage(from url: URL) -> CGImage? {
+        if let ciImage = CIImage(contentsOf: url, options: [.expandToHDR: true]),
+           let cg = ciContext.createCGImage(ciImage, from: ciImage.extent, format: .RGBAf, colorSpace: srgb) {
+            return cg
+        }
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-        // Ask ImageIO for the HDR rendition (gain map / extended range) when the
-        // format has one; plain SDR sources decode normally.
         let options: [CFString: Any] = [
             kCGImageSourceShouldAllowFloat: true,
             kCGImageSourceDecodeRequest: kCGImageSourceDecodeToHDR
