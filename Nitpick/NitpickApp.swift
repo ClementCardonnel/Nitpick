@@ -13,9 +13,14 @@ struct NitpickApp: App {
             ContentView(viewModel: viewModel)
                 .frame(minWidth: 960, minHeight: 620)
                 .onAppear {
-                    // `open Nitpick file.heic` / `swift run Nitpick file.heic`
-                    let args = ProcessInfo.processInfo.arguments.dropFirst()
-                    let urls = args.compactMap { URL(fileURLWithPath: $0).isFileURL ? URL(fileURLWithPath: $0) : nil }
+                    // Files passed as launch arguments (handy for debugging). Only
+                    // existing files count: Xcode also passes flags such as
+                    // `-NSDocumentRevisionsDebugMode YES`. Under the App Sandbox a
+                    // file is only readable if the user granted it, e.g. by drop.
+                    let args = ProcessInfo.processInfo.arguments.dropFirst().filter { !$0.hasPrefix("-") }
+                    let urls = args
+                        .map { URL(fileURLWithPath: $0) }
+                        .filter { FileManager.default.fileExists(atPath: $0.path) }
                     if !urls.isEmpty { viewModel.send(.filesDropped(urls)) }
                 }
         }

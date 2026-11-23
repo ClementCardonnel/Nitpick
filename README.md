@@ -8,16 +8,21 @@ See [ISSUE.md](ISSUE.md) for the full v1 spec.
 ## Architecture (RE:Flex, pillars 1–2)
 
 ```
-Sources/
-├── HDRCore/        UI-free core (no AppKit/SwiftUI imports)
-│   ├── AppState.swift / AppAction.swift   Elm-style state + actions
-│   ├── AppViewModel.swift                 single `update` reducer; effects fed back as actions
-│   └── Services/                          ToneMapper, MediaLoader, SDRExporter + live impls
-└── Nitpick/     thin SwiftUI shell (sidebar queue, HDR|SDR previews, export bar)
+Nitpick.xcodeproj   the macOS app target (signing, sandbox, icon, App Store archive)
+Nitpick/            thin SwiftUI shell (sidebar queue, HDR|SDR previews, export bar)
+└── Assets.xcassets     AppIcon + AccentColor
+HDRCore/            local Swift package: the UI-free core (no AppKit/SwiftUI imports)
+└── Sources/HDRCore/
+    ├── AppState.swift / AppAction.swift   Elm-style state + actions
+    ├── AppViewModel.swift                 single `update` reducer; effects fed back as actions
+    └── Services/                          ToneMapper, MediaLoader, SDRExporter + live impls
 ```
 
-- **Core:** `HDRCore` is a plain Swift package target; platform capabilities
-  (folder picker) are injected via `CoreServices`.
+- **Core:** `HDRCore` is a local Swift package the app target depends on;
+  platform capabilities (folder picker) are injected via `CoreServices`.
+- **App target:** App Sandbox with user-selected file read/write (dropped files
+  and the chosen export folder), hardened runtime, generated Info.plist
+  (Photography category). Set your team under Signing & Capabilities.
 - **Tone mapping:** `CISystemToneMap` (the system tone curve) targeting SDR
   (display headroom 1.0, standard dynamic range), driven by the image's
   `contentHeadroom`; headroom is estimated from the brightest pixel when the
@@ -31,12 +36,13 @@ Sources/
 
 ## Build & run
 
-```sh
-swift build
-swift run Nitpick    # macOS 26+, Swift 6
-```
+Open `Nitpick.xcodeproj` in Xcode and run the **Nitpick** scheme (macOS 26+,
+Swift 6). From the command line:
 
-Or open `Package.swift` in Xcode for a full app experience.
+```sh
+xcodebuild -project Nitpick.xcodeproj -scheme Nitpick build
+swift build --package-path HDRCore    # the core alone
+```
 
 ## Usage
 
