@@ -20,10 +20,11 @@ enum VideoPipeline {
         ]
     }
 
-    private static let srgb = CGColorSpace(name: CGColorSpace.sRGB)!
+    private static let extendedSRGB = CGColorSpace(name: CGColorSpace.extendedSRGB)!
 
-    /// First frame of the video as an extended-range CGImage (left preview pane).
-    static func firstFrameHDR(from url: URL) async -> CGImage? {
+    /// First frame of the video as an extended-range CGImage (left preview pane),
+    /// plus its content headroom from the format description when present.
+    static func firstFrameHDR(from url: URL) async -> StillPipeline.DecodedHDR? {
         let asset = AVURLAsset(url: url)
         guard let track = try? await asset.loadTracks(withMediaType: .video).first,
               let reader = try? AVAssetReader(asset: asset) else { return nil }
@@ -35,8 +36,10 @@ enum VideoPipeline {
         guard let sample = output.copyNextSampleBuffer(),
               let buffer = CMSampleBufferGetImageBuffer(sample) else { return nil }
         let ciImage = CIImage(cvPixelBuffer: buffer)
-        let context = CIContext(options: [.workingColorSpace: srgb])
-        return context.createCGImage(ciImage, from: ciImage.extent, format: .RGBAf, colorSpace: srgb)
+        let context = CIContext(options: nil)
+        // Render into extended sRGB so HDR values above 1.0 survive.
+        guard let cg = context.createCGImage(ciImage, from: ciImage.extent, format: .RGBAf, colorSpace: extendedSRGB) else { return nil }
+        return StillPipeline.DecodedHDR(cgImage: cg, contentHeadroom: max(ciImage.contentHeadroom, 0))
     }
 
     /// Exports the whole video as 8-bit SDR H.264 `.mp4` with audio passthrough.

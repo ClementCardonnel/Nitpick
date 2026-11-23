@@ -19,15 +19,21 @@ public final class LiveMediaLoader: MediaLoader {
         }
         switch kind {
         case .still:
-            guard let hdr = StillPipeline.loadHDRCGImage(from: url) else {
+            guard let decoded = StillPipeline.loadHDR(from: url) else {
                 return .failure("Could not decode image")
             }
-            return .success(FileItem.Previews(hdr: hdr, sdr: toneMapper.toneMapToSDR(hdr)))
+            return .success(FileItem.Previews(
+                hdr: decoded.cgImage,
+                sdr: toneMapper.toneMapToSDR(decoded.cgImage, contentHeadroom: decoded.contentHeadroom)
+            ))
         case .video:
-            guard let hdr = await VideoPipeline.firstFrameHDR(from: url) else {
+            guard let decoded = await VideoPipeline.firstFrameHDR(from: url) else {
                 return .failure("Could not decode video")
             }
-            return .success(FileItem.Previews(hdr: hdr, sdr: toneMapper.toneMapToSDR(hdr)))
+            return .success(FileItem.Previews(
+                hdr: decoded.cgImage,
+                sdr: toneMapper.toneMapToSDR(decoded.cgImage, contentHeadroom: decoded.contentHeadroom)
+            ))
         }
     }
 }
