@@ -45,8 +45,8 @@ restricted to its first two pillars (see Boundaries).
   numeric suffix (`SourceName_SDR 2.heic`). Never overwrite existing files.
 - **Errors:** per-file inline error badges in the list; export skips failed files and
   reports them in the end-of-run summary.
-- **Platform:** macOS 15 Sequoia+, latest Xcode/Swift. Local development only — no
-  signing, sandbox, or notarization in this phase. Nothing persists between launches.
+- **Platform:** macOS 26+, Swift 6.4 (Swift 6 language mode). Local development only —
+  no signing, sandbox, or notarization in this phase. Nothing persists between launches.
 
 ## Architecture (RE:Flex pillars 1–2)
 
@@ -73,10 +73,13 @@ restricted to its first two pillars (see Boundaries).
   signing/sandbox/notarization/distribution; persistence of the queue; inline video
   playback or scrubbing; batch format picker (format is derived from input); overwrite
   behavior.
-- **Unverified (to confirm during implementation):** the exact CoreGraphics/CoreImage
-  path that reproduces Apple's native SDR tone mapping. Initial implementation draws
-  the extended-range image into an 8-bit sRGB `CGContext`; verify against a real HDR
-  file on a real Mac and adjust if the system uses a different operator.
+- **Tone mapping (verified during implementation):** a plain 8-bit `CGContext` draw
+  *clamps* HDR highlights (confirmed by smoke test), so the implementation uses
+  Core Image's `CISystemToneMap` filter — the system tone curve "consistent with
+  other frameworks" — with `displayHeadroom = 1.0` and standard dynamic range,
+  driven by the image's `contentHeadroom` (estimated from the brightest pixel when
+  the source lacks metadata). Remaining manual check: compare against the native
+  rendering of a real gain-map HEIC / HLG video on an SDR display.
 
 ## Acceptance criteria
 
