@@ -16,7 +16,6 @@ struct ContentView: View {
             }
         }
         .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
-        .background(HDRWindowColorSpace()) // zero-size view: only sets window.colorSpace
         .onDrop(of: [UTType.fileURL], isTargeted: nil) { providers in
             Task {
                 let urls = await Self.collectURLs(from: providers)

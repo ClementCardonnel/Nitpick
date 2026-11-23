@@ -7,7 +7,12 @@ struct SidebarList: View {
     private var selection: Binding<UUID?> {
         Binding(
             get: { viewModel.state.selectedID },
-            set: { if let id = $0 { viewModel.send(.itemSelected(id)) } }
+            set: { newID in
+                // List echoes the selection back while SwiftUI is applying a state
+                // change; re-sending the same id would publish mid-update.
+                guard let newID, newID != viewModel.state.selectedID else { return }
+                viewModel.send(.itemSelected(newID))
+            }
         )
     }
 

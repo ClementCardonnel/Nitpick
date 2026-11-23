@@ -37,10 +37,10 @@ private struct Pane: View {
                 .padding(6)
             Divider()
             GeometryReader { geometry in
-                if let image, let nsImage = NSImageBridge.image(from: image) {
-                    Image(nsImage: nsImage)
-                        .resizable()
-                        .scaledToFit()
+                if let image {
+                    // Layer-backed so HDR sources get EDR + tone mapping to the
+                    // display's current headroom; SDR images render unchanged.
+                    HDRImageView(image: image)
                         .frame(width: geometry.size.width, height: geometry.size.height)
                 } else {
                     ProgressView()

@@ -12,6 +12,12 @@ struct HDAuRevoirApp: App {
         WindowGroup {
             ContentView(viewModel: viewModel)
                 .frame(minWidth: 960, minHeight: 620)
+                .onAppear {
+                    // `open HDAuRevoir file.heic` / `swift run HDAuRevoir file.heic`
+                    let args = ProcessInfo.processInfo.arguments.dropFirst()
+                    let urls = args.compactMap { URL(fileURLWithPath: $0).isFileURL ? URL(fileURLWithPath: $0) : nil }
+                    if !urls.isEmpty { viewModel.send(.filesDropped(urls)) }
+                }
         }
     }
 
