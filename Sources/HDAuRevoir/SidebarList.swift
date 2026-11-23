@@ -27,7 +27,7 @@ struct SidebarList: View {
                             .lineLimit(1)
                         statusView(item.status, kind: item.kind)
                     }
-                    Spacer()
+                    Spacer(minLength: 0)
                     Button {
                         viewModel.send(.itemRemoved(item.id))
                     } label: {
