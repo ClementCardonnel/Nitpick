@@ -1,4 +1,4 @@
-# HDAuRevoir
+# Nitpick
 
 Native macOS app that converts HDR content (Apple HDR stills and HDR video) to SDR
 (8-bit BT.709), tone mapped the way macOS natively renders HDR on an SDR display.
@@ -13,7 +13,7 @@ Sources/
 │   ├── AppState.swift / AppAction.swift   Elm-style state + actions
 │   ├── AppViewModel.swift                 single `update` reducer; effects fed back as actions
 │   └── Services/                          ToneMapper, MediaLoader, SDRExporter + live impls
-└── HDAuRevoir/     thin SwiftUI shell (sidebar queue, HDR|SDR previews, export bar)
+└── Nitpick/     thin SwiftUI shell (sidebar queue, HDR|SDR previews, export bar)
 ```
 
 - **Core:** `HDRCore` is a plain Swift package target; platform capabilities
@@ -33,7 +33,7 @@ Sources/
 
 ```sh
 swift build
-swift run HDAuRevoir    # macOS 26+, Swift 6
+swift run Nitpick    # macOS 26+, Swift 6
 ```
 
 Or open `Package.swift` in Xcode for a full app experience.

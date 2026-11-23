@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "HDAuRevoir",
+    name: "Nitpick",
     platforms: [.macOS(.v26)],
     products: [
         .library(name: "HDRCore", targets: ["HDRCore"])
@@ -12,9 +12,9 @@ let package = Package(
         .target(name: "HDRCore", path: "Sources/HDRCore"),
         // Thin SwiftUI shell (RE:Flex pillar 2 lives in HDRCore's view model).
         .executableTarget(
-            name: "HDAuRevoir",
+            name: "Nitpick",
             dependencies: ["HDRCore"],
-            path: "Sources/HDAuRevoir"
+            path: "Sources/Nitpick"
         )
     ],
     swiftLanguageModes: [.v6]

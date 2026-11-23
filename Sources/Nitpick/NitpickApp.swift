@@ -3,7 +3,7 @@ import AppKit
 import HDRCore
 
 @main
-struct HDAuRevoirApp: App {
+struct NitpickApp: App {
     @StateObject private var viewModel = AppViewModel(
         services: .live(chooseExportFolder: Self.chooseExportFolder)
     )
@@ -13,7 +13,7 @@ struct HDAuRevoirApp: App {
             ContentView(viewModel: viewModel)
                 .frame(minWidth: 960, minHeight: 620)
                 .onAppear {
-                    // `open HDAuRevoir file.heic` / `swift run HDAuRevoir file.heic`
+                    // `open Nitpick file.heic` / `swift run Nitpick file.heic`
                     let args = ProcessInfo.processInfo.arguments.dropFirst()
                     let urls = args.compactMap { URL(fileURLWithPath: $0).isFileURL ? URL(fileURLWithPath: $0) : nil }
                     if !urls.isEmpty { viewModel.send(.filesDropped(urls)) }

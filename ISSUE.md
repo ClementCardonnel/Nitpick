@@ -1,4 +1,4 @@
-# HDAuRevoir — HDR → SDR converter for macOS (v1)
+# Nitpick — HDR → SDR converter for macOS (v1)
 
 ## Outcome
 
