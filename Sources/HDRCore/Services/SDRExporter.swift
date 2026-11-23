@@ -43,7 +43,7 @@ public final class LiveSDRExporter: SDRExporter {
         progress: @Sendable (ExportProgress) -> Void,
         isCancelled: @Sendable () -> Bool
     ) async -> ExportSummary {
-        var succeeded: [String] = []
+        var succeeded: [URL] = []
         var failed: [ExportFailure] = []
         let total = items.count
         var completed = 0
@@ -59,7 +59,7 @@ public final class LiveSDRExporter: SDRExporter {
                 case .video:
                     try await VideoPipeline.exportSDR(source: item.url, destination: destination, toneMapper: toneMapper) { _ in }
                 }
-                succeeded.append(destination.lastPathComponent)
+                succeeded.append(destination)
             } catch {
                 failed.append(ExportFailure(fileName: item.displayName, message: error.localizedDescription))
                 try? FileManager.default.removeItem(at: destination)
@@ -73,7 +73,9 @@ public final class LiveSDRExporter: SDRExporter {
     /// `name_SDR.ext`, never overwriting: collisions get a numeric suffix.
     static func destinationURL(for item: FileItem, in folder: URL) -> URL {
         let base = item.url.deletingPathExtension().lastPathComponent
-        let ext = item.kind == .video ? "mp4" : StillPipeline.outputExtension(for: item.url)
+        let ext = item.kind == .video
+            ? VideoPipeline.outputExtension(for: item.url)
+            : StillPipeline.outputExtension(for: item.url)
         var candidate = folder.appendingPathComponent("\(base)_SDR.\(ext)")
         var n = 2
         while FileManager.default.fileExists(atPath: candidate.path) {

@@ -44,7 +44,62 @@ enum VideoPipeline {
         let context = CIContext(options: nil)
         // Render into extended sRGB so HDR values above 1.0 survive.
         guard let cg = context.createCGImage(ciImage, from: ciImage.extent, format: .RGBAf, colorSpace: extendedSRGB) else { return nil }
-        return StillPipeline.DecodedHDR(cgImage: cg, contentHeadroom: max(decoded.contentHeadroom, 0))
+        return StillPipeline.DecodedHDR(
+            cgImage: cg,
+            contentHeadroom: max(decoded.contentHeadroom, 0),
+            sdrColorSpace: CGColorSpace(name: CGColorSpace.itur_709)!
+        )
+    }
+
+    /// SDR video keeps the source container: QuickTime stays `.mov`, MPEG-4 stays `.mp4`.
+    static func outputExtension(for url: URL) -> String {
+        switch url.pathExtension.lowercased() {
+        case "mp4", "m4v": return "mp4"
+        default: return "mov"
+        }
+    }
+
+    /// Encoder for the SDR copy: the source's own codec family, at the source's
+    /// bitrate, so the output is as close to the original as an 8-bit SDR stream
+    /// can be. ProRes stays ProRes (bitrate is implied by the flavour).
+    static func videoOutputSettings(
+        for track: AVAssetTrack, width: Int, height: Int
+    ) async -> [String: Any] {
+        let format = (try? await track.load(.formatDescriptions))?.first
+        let subtype = format.map { CMFormatDescriptionGetMediaSubType($0) } ?? kCMVideoCodecType_HEVC
+        let bitRate = (try? await track.load(.estimatedDataRate)) ?? 0
+        let frameRate = (try? await track.load(.nominalFrameRate)) ?? 0
+
+        let codec: AVVideoCodecType
+        switch subtype {
+        case kCMVideoCodecType_H264: codec = .h264
+        case kCMVideoCodecType_AppleProRes4444, kCMVideoCodecType_AppleProRes4444XQ: codec = .proRes4444
+        case kCMVideoCodecType_AppleProRes422HQ: codec = .proRes422HQ
+        case kCMVideoCodecType_AppleProRes422: codec = .proRes422
+        case kCMVideoCodecType_AppleProRes422LT: codec = .proRes422LT
+        case kCMVideoCodecType_AppleProRes422Proxy: codec = .proRes422Proxy
+        default: codec = .hevc
+        }
+
+        var settings: [String: Any] = [
+            AVVideoCodecKey: codec,
+            AVVideoWidthKey: width,
+            AVVideoHeightKey: height,
+            // Tag the stream as standard SDR (BT.709), replacing the HDR tags.
+            AVVideoColorPropertiesKey: [
+                AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+                AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+                AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2
+            ]
+        ]
+        if codec == .hevc || codec == .h264 {
+            var compression: [String: Any] = [:]
+            if bitRate > 0 { compression[AVVideoAverageBitRateKey] = Int(bitRate) }
+            if frameRate > 0 { compression[AVVideoExpectedSourceFrameRateKey] = frameRate }
+            if codec == .h264 { compression[AVVideoProfileLevelKey] = AVVideoProfileLevelH264HighAutoLevel }
+            settings[AVVideoCompressionPropertiesKey] = compression
+        }
+        return settings
     }
 
     /// Maps a track's `preferredTransform` (y-down rotation) to the image
@@ -59,7 +114,8 @@ enum VideoPipeline {
         }
     }
 
-    /// Exports the whole video as 8-bit SDR H.264 `.mp4` with audio passthrough.
+    /// Exports the whole video as 8-bit SDR in the source's codec and container,
+    /// with audio passthrough.
     /// `progress` receives 0...1 for the video pass.
     static func exportSDR(
         source: URL,
@@ -101,16 +157,14 @@ enum VideoPipeline {
         }
 
         do {
-            let writer = try AVAssetWriter(outputURL: destination, fileType: .mp4)
-            let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: [
-                AVVideoCodecKey: AVVideoCodecType.h264,
-                AVVideoWidthKey: width,
-                AVVideoHeightKey: height,
-                AVVideoCompressionPropertiesKey: [
-                    AVVideoAverageBitRateKey: 8_000_000,
-                    AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
-                ]
-            ])
+            let fileType: AVFileType = outputExtension(for: source) == "mp4" ? .mp4 : .mov
+            let writer = try AVAssetWriter(outputURL: destination, fileType: fileType)
+            // Carry over asset metadata (capture date, location, device…).
+            writer.metadata = (try? await asset.load(.metadata)) ?? []
+            let videoInput = AVAssetWriterInput(
+                mediaType: .video,
+                outputSettings: await videoOutputSettings(for: videoTrack, width: width, height: height)
+            )
             videoInput.expectsMediaDataInRealTime = false
             videoInput.transform = preferredTransform
             guard writer.canAdd(videoInput) else { throw ExportError.writeFailed(destination) }

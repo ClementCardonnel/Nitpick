@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import HDRCore
 
 struct ExportBar: View {
@@ -54,12 +55,25 @@ struct ExportBar: View {
         return progress.currentFileName.isEmpty ? base : "\(base) — \(progress.currentFileName)"
     }
 
+    @ViewBuilder
     private func summaryText(_ summary: ExportSummary) -> some View {
-        let failed = summary.failed.map { "\($0.fileName): \($0.message)" }.joined(separator: "; ")
-        let text = "Exported \(summary.succeeded.count) file(s)" + (failed.isEmpty ? "" : ". Failed: \(failed)")
-        return Text(text)
+        let count = summary.succeeded.count
+        if count > 0 {
+            Button {
+                NSWorkspace.shared.activateFileViewerSelecting(summary.succeeded)
+            } label: {
+                Label("Exported \(count) file\(count == 1 ? "" : "s")", systemImage: "folder")
+            }
+            .buttonStyle(.link)
             .font(.caption)
-            .foregroundStyle(summary.failed.isEmpty ? Color.secondary : Color.orange)
-            .lineLimit(2)
+            .help("Show in Finder")
+        }
+        if !summary.failed.isEmpty {
+            let failed = summary.failed.map { "\($0.fileName): \($0.message)" }.joined(separator: "; ")
+            Text((count > 0 ? "" : "Nothing exported. ") + "Failed: \(failed)")
+                .font(.caption)
+                .foregroundStyle(Color.orange)
+                .lineLimit(2)
+        }
     }
 }

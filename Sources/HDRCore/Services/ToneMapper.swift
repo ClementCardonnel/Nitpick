@@ -6,11 +6,13 @@ import CoreVideo
 /// The single seam where the tone mapping operator lives. v1 uses the system's
 /// native tone mapping (`CISystemToneMap`); the deferred slider will plug in here.
 public protocol ToneMapper: Sendable {
-    /// Tone maps an extended-range image into an 8-bit sRGB image.
+    /// Tone maps an extended-range image into an 8-bit image in `colorSpace`
+    /// (an SDR space such as sRGB or Display P3 — pick the source's to keep its gamut).
     /// `contentHeadroom` is the source's HDR headroom from metadata when known
     /// (0 = unknown → estimated from the brightest pixel).
-    func toneMapToSDR(_ image: CGImage, contentHeadroom: Float) -> CGImage?
-    /// Tone maps an HDR pixel buffer into an 8-bit BGRA buffer suitable for encoding.
+    func toneMapToSDR(_ image: CGImage, contentHeadroom: Float, colorSpace: CGColorSpace) -> CGImage?
+    /// Tone maps an HDR pixel buffer into an 8-bit BGRA buffer in BT.709 (the SDR
+    /// video standard), suitable for encoding.
     func toneMapToSDR(pixelBuffer: CVPixelBuffer) -> CVPixelBuffer?
 }
 
@@ -23,6 +25,7 @@ public protocol ToneMapper: Sendable {
 /// 1.0 and silently destroys the HDR range (that was the "overblown" bug).
 public final class CoreGraphicsToneMapper: ToneMapper {
     private let srgb = CGColorSpace(name: CGColorSpace.sRGB)!
+    private let rec709 = CGColorSpace(name: CGColorSpace.itur_709)!
     private let extendedSRGB = CGColorSpace(name: CGColorSpace.extendedSRGB)!
     private let ciContext: CIContext
 
@@ -30,16 +33,16 @@ public final class CoreGraphicsToneMapper: ToneMapper {
         self.ciContext = CIContext(options: nil)
     }
 
-    public func toneMapToSDR(_ image: CGImage, contentHeadroom: Float) -> CGImage? {
+    public func toneMapToSDR(_ image: CGImage, contentHeadroom: Float, colorSpace: CGColorSpace) -> CGImage? {
         guard let toned = toneMap(CIImage(cgImage: image), contentHeadroom: contentHeadroom),
-              let output = ciContext.createCGImage(toned, from: toned.extent, format: .BGRA8, colorSpace: srgb) else {
+              let output = ciContext.createCGImage(toned, from: toned.extent, format: .BGRA8, colorSpace: colorSpace) else {
             return nil
         }
         return output
     }
 
     public func toneMapToSDR(_ image: CGImage) -> CGImage? {
-        toneMapToSDR(image, contentHeadroom: 0)
+        toneMapToSDR(image, contentHeadroom: 0, colorSpace: srgb)
     }
 
     public func toneMapToSDR(pixelBuffer: CVPixelBuffer) -> CVPixelBuffer? {
@@ -48,37 +51,20 @@ public final class CoreGraphicsToneMapper: ToneMapper {
         // format description attachments); PQ-encoded values are ≤ 1.0, so pixel
         // estimation is meaningless there.
         let headroom = ciImage.contentHeadroom > 1.0 ? ciImage.contentHeadroom : 0
-        guard let toned = toneMap(ciImage, contentHeadroom: headroom),
-              let sdrCGImage = ciContext.createCGImage(toned, from: ciImage.extent, format: .BGRA8, colorSpace: srgb) else {
-            return nil
-        }
+        guard let toned = toneMap(ciImage, contentHeadroom: headroom) else { return nil }
 
         var output: CVPixelBuffer?
+        let attributes = [kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any]()] as CFDictionary
         guard CVPixelBufferCreate(
             kCFAllocatorDefault,
-            sdrCGImage.width,
-            sdrCGImage.height,
+            CVPixelBufferGetWidth(pixelBuffer),
+            CVPixelBufferGetHeight(pixelBuffer),
             kCVPixelFormatType_32BGRA,
-            nil,
+            attributes,
             &output
         ) == kCVReturnSuccess, let output else { return nil }
-
-        CVPixelBufferLockBaseAddress(output, [])
-        defer { CVPixelBufferUnlockBaseAddress(output, []) }
-
-        guard let base = CVPixelBufferGetBaseAddress(output),
-              let context = CGContext(
-                data: base,
-                width: sdrCGImage.width,
-                height: sdrCGImage.height,
-                bitsPerComponent: 8,
-                bytesPerRow: CVPixelBufferGetBytesPerRow(output),
-                space: srgb,
-                // BGRA in memory = 32-bit little-endian ARGB; without the byte order
-                // flag CG writes ARGB bytes and red/blue come out swapped.
-                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-              ) else { return nil }
-        context.draw(sdrCGImage, in: CGRect(x: 0, y: 0, width: sdrCGImage.width, height: sdrCGImage.height))
+        // Render straight into the BGRA buffer in BT.709 (no 8-bit CGImage detour).
+        ciContext.render(toned, to: output, bounds: ciImage.extent, colorSpace: rec709)
         return output
     }
 

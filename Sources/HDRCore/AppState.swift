@@ -65,9 +65,10 @@ public struct ExportFailure: Equatable, Sendable {
 }
 
 public struct ExportSummary: Equatable, Sendable {
-    public var succeeded: [String]
+    /// Exported files, in export order.
+    public var succeeded: [URL]
     public var failed: [ExportFailure]
-    public init(succeeded: [String], failed: [ExportFailure]) {
+    public init(succeeded: [URL], failed: [ExportFailure]) {
         self.succeeded = succeeded
         self.failed = failed
     }

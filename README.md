@@ -23,9 +23,11 @@ Sources/
   `contentHeadroom`; headroom is estimated from the brightest pixel when the
   source lacks metadata.
 - **Stills:** ImageIO decode (`kCGImageSourceDecodeToHDR`) → tone map → 8-bit
-  HEIC/JPEG/PNG matching the source family.
+  HEIC/JPEG/PNG matching the source family, in the source's SDR gamut (e.g.
+  Display P3), at maximum quality, with the source metadata copied.
 - **Video:** AVAssetReader (half-float HDR frames) → per-frame tone map →
-  AVAssetWriter H.264 `.mp4`, audio passed through.
+  AVAssetWriter in the source's codec (HEVC/H.264/ProRes), bitrate and
+  container, tagged BT.709, with metadata copied and audio passed through.
 
 ## Build & run
 

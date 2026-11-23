@@ -24,7 +24,7 @@ public final class LiveMediaLoader: MediaLoader {
             }
             return .success(FileItem.Previews(
                 hdr: decoded.cgImage,
-                sdr: toneMapper.toneMapToSDR(decoded.cgImage, contentHeadroom: decoded.contentHeadroom)
+                sdr: toneMapper.toneMapToSDR(decoded.cgImage, contentHeadroom: decoded.contentHeadroom, colorSpace: decoded.sdrColorSpace)
             ))
         case .video:
             guard let decoded = await VideoPipeline.firstFrameHDR(from: url) else {
@@ -32,7 +32,7 @@ public final class LiveMediaLoader: MediaLoader {
             }
             return .success(FileItem.Previews(
                 hdr: decoded.cgImage,
-                sdr: toneMapper.toneMapToSDR(decoded.cgImage, contentHeadroom: decoded.contentHeadroom)
+                sdr: toneMapper.toneMapToSDR(decoded.cgImage, contentHeadroom: decoded.contentHeadroom, colorSpace: decoded.sdrColorSpace)
             ))
         }
     }
