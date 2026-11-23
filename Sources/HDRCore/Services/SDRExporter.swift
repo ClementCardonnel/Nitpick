@@ -1,6 +1,6 @@
 import Foundation
 
-public enum ExportError: Error, CustomStringConvertible, Sendable {
+public enum ExportError: LocalizedError, CustomStringConvertible, Sendable {
     case decodeFailed(URL)
     case toneMapFailed(URL)
     case writeFailed(URL)
@@ -14,6 +14,9 @@ public enum ExportError: Error, CustomStringConvertible, Sendable {
         case .noVideoTrack(let url): return "No video track in \(url.lastPathComponent)"
         }
     }
+
+    /// Surfaces `description` through `localizedDescription` in the UI.
+    public var errorDescription: String? { description }
 }
 
 public protocol SDRExporter: Sendable {

@@ -3,6 +3,7 @@ import AVFoundation
 import CoreGraphics
 import CoreImage
 import CoreVideo
+import ImageIO
 
 /// AVFoundation-based video pipeline: read HDR frames, tone map each to 8-bit SDR,
 /// encode H.264 `.mp4`, and pass the audio track through.
@@ -28,6 +29,7 @@ enum VideoPipeline {
         let asset = AVURLAsset(url: url)
         guard let track = try? await asset.loadTracks(withMediaType: .video).first,
               let reader = try? AVAssetReader(asset: asset) else { return nil }
+        let transform = (try? await track.load(.preferredTransform)) ?? .identity
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: hdrReadSettings)
         guard reader.canAdd(output) else { return nil }
         reader.add(output)
@@ -35,11 +37,26 @@ enum VideoPipeline {
         defer { reader.cancelReading() }
         guard let sample = output.copyNextSampleBuffer(),
               let buffer = CMSampleBufferGetImageBuffer(sample) else { return nil }
-        let ciImage = CIImage(cvPixelBuffer: buffer)
+        let decoded = CIImage(cvPixelBuffer: buffer)
+        // Frames are stored in the sensor's orientation; the track's transform says
+        // how to display them (e.g. portrait iPhone video is landscape + 90°).
+        let ciImage = decoded.oriented(orientation(for: transform))
         let context = CIContext(options: nil)
         // Render into extended sRGB so HDR values above 1.0 survive.
         guard let cg = context.createCGImage(ciImage, from: ciImage.extent, format: .RGBAf, colorSpace: extendedSRGB) else { return nil }
-        return StillPipeline.DecodedHDR(cgImage: cg, contentHeadroom: max(ciImage.contentHeadroom, 0))
+        return StillPipeline.DecodedHDR(cgImage: cg, contentHeadroom: max(decoded.contentHeadroom, 0))
+    }
+
+    /// Maps a track's `preferredTransform` (y-down rotation) to the image
+    /// orientation that displays its frames upright. Mirrored transforms are rare
+    /// for camera footage and fall back to `.up`.
+    static func orientation(for transform: CGAffineTransform) -> CGImagePropertyOrientation {
+        switch (transform.a.rounded(), transform.b.rounded(), transform.c.rounded(), transform.d.rounded()) {
+        case (0, 1, -1, 0): return .right
+        case (0, -1, 1, 0): return .left
+        case (-1, 0, 0, -1): return .down
+        default: return .up
+        }
     }
 
     /// Exports the whole video as 8-bit SDR H.264 `.mp4` with audio passthrough.
@@ -56,9 +73,11 @@ enum VideoPipeline {
         }
         let naturalSize = try await videoTrack.load(.naturalSize)
         let preferredTransform = try await videoTrack.load(.preferredTransform)
-        let displaySize = naturalSize.applying(preferredTransform)
-        let width = Int(displaySize.width.rounded())
-        let height = Int(displaySize.height.rounded())
+        // Encode frames in their stored (natural) orientation and carry the track's
+        // transform over to the output, exactly like the source. (Applying the
+        // transform to the size yields negative dimensions for rotated video.)
+        let width = Int(naturalSize.width.rounded())
+        let height = Int(naturalSize.height.rounded())
         guard width > 0, height > 0 else { throw ExportError.decodeFailed(source) }
         let duration = (try? await asset.load(.duration)) ?? .positiveInfinity
 
@@ -68,7 +87,9 @@ enum VideoPipeline {
         reader.add(videoOutput)
 
         var audioOutput: AVAssetReaderTrackOutput?
+        var audioFormatHint: CMFormatDescription?
         if let audioTrack = try? await asset.loadTracks(withMediaType: .audio).first {
+            audioFormatHint = try? await audioTrack.load(.formatDescriptions).first
             let output = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil) // compressed passthrough
             if reader.canAdd(output) {
                 reader.add(output)
@@ -91,12 +112,15 @@ enum VideoPipeline {
                 ]
             ])
             videoInput.expectsMediaDataInRealTime = false
+            videoInput.transform = preferredTransform
             guard writer.canAdd(videoInput) else { throw ExportError.writeFailed(destination) }
             writer.add(videoInput)
 
             var audioInput: AVAssetWriterInput?
             if audioOutput != nil {
-                let input = AVAssetWriterInput(mediaType: .audio, outputSettings: nil)
+                // Passthrough into MP4 needs the source format, or canAdd rejects
+                // the input and the audio is silently dropped.
+                let input = AVAssetWriterInput(mediaType: .audio, outputSettings: nil, sourceFormatHint: audioFormatHint)
                 input.expectsMediaDataInRealTime = false
                 if writer.canAdd(input) {
                     writer.add(input)
@@ -118,31 +142,42 @@ enum VideoPipeline {
             guard writer.startWriting() else { throw writer.error ?? ExportError.writeFailed(destination) }
             writer.startSession(atSourceTime: .zero)
 
-            // Video pass: decode → tone map → encode, frame by frame.
-            while reader.status == .reading {
-                guard let sample = videoOutput.copyNextSampleBuffer() else { break }
-                guard let buffer = CMSampleBufferGetImageBuffer(sample) else { continue }
-                let presentationTime = CMSampleBufferGetPresentationTimeStamp(sample)
-                guard let sdrBuffer = toneMapper.toneMapToSDR(pixelBuffer: buffer) else { continue }
-                while !videoInput.isReadyForMoreMediaData {
-                    try await Task.sleep(nanoseconds: 5_000_000)
-                }
-                adaptor.append(sdrBuffer, withPresentationTime: presentationTime)
-                if duration.seconds > 0, duration.seconds.isFinite {
-                    progress(min(presentationTime.seconds / duration.seconds, 1))
-                }
-            }
-            videoInput.markAsFinished()
-
-            // Audio pass: passthrough of the compressed samples.
-            if let audioOutput, let audioInput {
-                while let sample = audioOutput.copyNextSampleBuffer() {
-                    while !audioInput.isReadyForMoreMediaData {
-                        try await Task.sleep(nanoseconds: 5_000_000)
+            // Interleave video (decode → tone map → encode) and audio (passthrough):
+            // AVAssetWriter wants both tracks fed together and can stop accepting
+            // one input until the other catches up, so a video-then-audio pass
+            // could stall forever.
+            var videoDone = false
+            var audioDone = audioInput == nil
+            while !(videoDone && audioDone) {
+                try Task.checkCancellation()
+                var madeProgress = false
+                if !videoDone, videoInput.isReadyForMoreMediaData {
+                    madeProgress = true
+                    if let sample = videoOutput.copyNextSampleBuffer() {
+                        if let buffer = CMSampleBufferGetImageBuffer(sample),
+                           let sdrBuffer = toneMapper.toneMapToSDR(pixelBuffer: buffer) {
+                            let presentationTime = CMSampleBufferGetPresentationTimeStamp(sample)
+                            adaptor.append(sdrBuffer, withPresentationTime: presentationTime)
+                            if duration.seconds > 0, duration.seconds.isFinite {
+                                progress(min(presentationTime.seconds / duration.seconds, 1))
+                            }
+                        }
+                    } else {
+                        videoInput.markAsFinished()
+                        videoDone = true
                     }
-                    audioInput.append(sample)
                 }
-                audioInput.markAsFinished()
+                if !audioDone, let audioOutput, let audioInput, audioInput.isReadyForMoreMediaData {
+                    madeProgress = true
+                    if let sample = audioOutput.copyNextSampleBuffer() {
+                        audioInput.append(sample)
+                    } else {
+                        audioInput.markAsFinished()
+                        audioDone = true
+                    }
+                }
+                if writer.status == .failed { throw writer.error ?? ExportError.writeFailed(destination) }
+                if !madeProgress { try await Task.sleep(nanoseconds: 5_000_000) }
             }
 
             nonisolated(unsafe) let writerForContinuation = writer

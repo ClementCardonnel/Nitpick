@@ -74,7 +74,9 @@ public final class CoreGraphicsToneMapper: ToneMapper {
                 bitsPerComponent: 8,
                 bytesPerRow: CVPixelBufferGetBytesPerRow(output),
                 space: srgb,
-                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+                // BGRA in memory = 32-bit little-endian ARGB; without the byte order
+                // flag CG writes ARGB bytes and red/blue come out swapped.
+                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
               ) else { return nil }
         context.draw(sdrCGImage, in: CGRect(x: 0, y: 0, width: sdrCGImage.width, height: sdrCGImage.height))
         return output
