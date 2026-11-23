@@ -1,0 +1,90 @@
+{
+  "fill" : {
+    "linear-gradient" : [
+      "display-p3:0.17255,0.08235,0.20000,1.00000",
+      "display-p3:0.07059,0.03529,0.07843,1.00000"
+    ]
+  },
+  "groups" : [
+    {
+      "name" : "Corona",
+      "layers" : [
+        {
+          "blend-mode" : "plus-lighter",
+          "glass" : false,
+          "image-name" : "corona.png",
+          "name" : "corona"
+        }
+      ],
+      "shadow" : {
+        "kind" : "none",
+        "opacity" : 0
+      },
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0
+      }
+    },
+    {
+      "name" : "SDR sun",
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "sun-sdr.png",
+          "name" : "sun-sdr"
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.45
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0
+      }
+    },
+    {
+      "name" : "HDR sun",
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "sun-hdr.png",
+          "name" : "sun-hdr"
+        }
+      ],
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 0.6
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0
+      }
+    },
+    {
+      "name" : "Background",
+      "layers" : [
+        {
+          "glass" : false,
+          "image-name" : "background-hdr.png",
+          "name" : "background-hdr"
+        }
+      ],
+      "shadow" : {
+        "kind" : "none",
+        "opacity" : 0
+      },
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}

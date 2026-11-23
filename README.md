@@ -10,7 +10,9 @@ See [ISSUE.md](ISSUE.md) for the full v1 spec.
 ```
 Nitpick.xcodeproj   the macOS app target (signing, sandbox, icon, App Store archive)
 Nitpick/            thin SwiftUI shell (sidebar queue, HDR|SDR previews, export bar)
-└── Assets.xcassets     AppIcon + AccentColor
+├── AppIcon.icon        Icon Composer document (Liquid Glass app icon)
+└── Assets.xcassets     AccentColor
+Design/Icon/        generate-layers.swift: renders the icon's PNG layers
 HDRCore/            local Swift package: the UI-free core (no AppKit/SwiftUI imports)
 └── Sources/HDRCore/
     ├── AppState.swift / AppAction.swift   Elm-style state + actions
@@ -50,3 +52,14 @@ Drag & drop HDR files onto the window. Select a file to see the HDR source (left
 and the SDR result (right). **Export SDR…** picks a folder and exports the whole
 queue as `Name_SDR.ext` (never overwriting; numeric suffix on collision), with
 progress and cancel. Failed files show an inline error and are skipped at export.
+
+## App icon
+
+`Nitpick/AppIcon.icon` is an Icon Composer document: a flat background, two
+glass half-suns (HDR and SDR) and an additive corona. Open it in Icon Composer
+to tweak glass, shadows or appearances. To redraw the layer artwork:
+
+```sh
+swift Design/Icon/generate-layers.swift Nitpick/AppIcon.icon/Assets
+```
+
